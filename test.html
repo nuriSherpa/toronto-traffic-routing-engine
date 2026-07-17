@@ -51,7 +51,7 @@
         width: 300px;
         max-height: calc(100vh - 24px);
         overflow-y: auto;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        border: 1px solid var(--divider);
         display: flex;
         flex-direction: column;
         gap: 12px;
@@ -116,7 +116,6 @@
         justify-content: center;
         font-weight: 700;
         font-size: 0.7rem;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
         border: 2px solid transparent;
         transition: border-color 0.2s;
       }
@@ -198,7 +197,7 @@
         border-radius: 12px;
         font-weight: 600;
         font-size: 0.95rem;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+        border: 1px solid var(--divider);
         pointer-events: none;
         transition: opacity 0.3s;
       }
@@ -218,10 +217,8 @@
         font-weight: 600;
         font-size: 0.85rem;
         display: none;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
       }
 
-      /* Route label styles */
       .subway-label {
         display: flex;
         align-items: center;
@@ -232,32 +229,27 @@
         font-weight: 800;
         font-size: 13px;
         line-height: 1;
-        box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
         overflow: hidden;
       }
       .bus-label {
-        display: inline-block; /* shrink to content */
-        border-radius: 12px; /* rounded corners */
-        padding: 5px 10px; /* proper horizontal padding */
+        display: inline-block;
+        border-radius: 12px;
+        padding: 5px 10px;
         font-weight: 800;
         font-size: 13px;
-        color: #fff; /* fallback, overridden inline */
+        color: #fff;
         line-height: 1.2;
         text-align: center;
         white-space: nowrap;
-        box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
       }
-
       .stop-dot {
         width: 10px;
         height: 10px;
         border-radius: 50%;
         border: 2px solid white;
-        box-shadow: none !important;
         display: block;
         transition: transform 0.15s;
       }
-
       @media (max-width: 600px) {
         #sidebar {
           width: 230px;
@@ -268,7 +260,6 @@
           border-radius: 10px;
         }
       }
-
       .branch-chips {
         display: flex;
         flex-wrap: wrap;
@@ -321,9 +312,27 @@
 
     <script>
       (function () {
-        const API_BASE = 'http://localhost:3000';
+        const API_BASE = 'http://localhost:3000/api/v1';
         const ROUTES_URL = `${API_BASE}/routes`;
         const routeFullUrl = (id) => `${API_BASE}/routes/${encodeURIComponent(id)}/full`;
+
+        async function fetchJson(url) {
+          const resp = await fetch(url);
+          let payload = null;
+          try {
+            payload = await resp.json();
+          } catch (e) {
+            throw new Error(`HTTP ${resp.status}: invalid JSON`);
+          }
+          if (!resp.ok || !payload || payload.success === false) {
+            const message =
+              payload && payload.error && payload.error.message
+                ? payload.error.message
+                : `HTTP ${resp.status}`;
+            throw new Error(message);
+          }
+          return payload.data;
+        }
 
         const routeListEl = document.getElementById('route-list');
         const statsEl = document.getElementById('stats');
@@ -341,8 +350,9 @@
 
         const routeDataCache = new Map();
         const selectedBranchByRoute = new Map();
-        const layerRegistry = new Map();
+        const layerRegistry = new Map(); // key -> { polyline, markersLayer, stopMarkers, coords, route }
         const dynamicMarkerMap = new Map();
+        const subwayStopLayers = new Map(); // routeId -> L.layerGroup
 
         const map = L.map('map', {
           center: [43.7, -79.4],
@@ -360,7 +370,7 @@
           maxZoom: 19,
         }).addTo(map);
 
-        // ----- Utility functions -----
+        // ----- Utilities -----
         function makeLayerKey(gid, dir, branch) {
           return `${gid}__dir${dir}__branch${branch ?? ''}`;
         }
@@ -393,7 +403,6 @@
           return isMajorStop(stop);
         }
 
-        // ----- Visible midpoint of route -----
         function getVisibleMidpoint(coords) {
           if (coords.length < 2) return null;
           const line = turf.lineString(coords);
@@ -417,18 +426,13 @@
           return snapped.geometry.coordinates;
         }
 
-        // ----- Generate icon HTML -----
         function getRouteIconHtml(route) {
           const color = route.color ? `#${route.color}` : '#888';
           const short = (route.short_name || route.long_name || '?').trim();
-          const type = route.route_type;
           const textColor = getContrastColor(color);
-
-          if (type === 1) {
-            // Subway: circle
+          if (route.route_type === 1) {
             return `<div class="subway-label" style="background-color:${color}; color:${textColor};">${short}</div>`;
           } else {
-            // Bus / streetcar: rounded rectangle
             return `<div class="bus-label" style="background-color:${color}; color:${textColor};">${short}</div>`;
           }
         }
@@ -436,23 +440,16 @@
         function createRouteIcon(route) {
           const html = getRouteIconHtml(route);
           const isSubway = route.route_type === 1;
-          // For subway circle: size 28x28, anchor [14,14] centres perfectly
-          // For bus: size [0,0] auto-sizes to content, anchor [20,12] centres roughly vertically & horizontally
           const size = isSubway ? [28, 28] : [0, 0];
-          const anchor = isSubway ? [14, 14] : [22, 12]; // slight shift to centre the pill
-          return L.divIcon({
-            html: html,
-            className: '',
-            iconSize: size,
-            iconAnchor: anchor,
-          });
+          const anchor = isSubway ? [14, 14] : [22, 12];
+          return L.divIcon({ html, className: '', iconSize: size, iconAnchor: anchor });
         }
 
         // ----- Dynamic labels -----
         function updateDynamicLabels() {
           const zoom = map.getZoom();
           if (zoom < 13) {
-            dynamicMarkerMap.forEach((marker) => map.removeLayer(marker));
+            dynamicMarkerMap.forEach((m) => map.removeLayer(m));
             dynamicMarkerMap.clear();
             return;
           }
@@ -519,9 +516,129 @@
               m.setOpacity(inView && showByZoom ? 1 : 0);
             });
           }
+          for (const [, layer] of subwayStopLayers) {
+            layer.eachLayer((marker) => {
+              const latLng = marker.getLatLng();
+              const inView = bounds.contains(latLng);
+              const stop = marker.options.stopData;
+              const showByZoom = stop ? shouldShowStop(stop, zoom) : true;
+              marker.setOpacity(inView && showByZoom ? 1 : 0);
+            });
+          }
         }
 
-        // ----- Rendering a single itinerary -----
+        // ----- Merge subway stops and snap to a route shape -----
+        function mergeSubwayStops(fullData, shapeCoords) {
+          const stationMap = new Map();
+          (fullData.itineraries || []).forEach((it) => {
+            if (!it.stops) return;
+            it.stops.forEach((stop) => {
+              const key = stop.parent_station || stop.global_stop_id;
+              if (!stationMap.has(key)) {
+                stationMap.set(key, { coords: [], representative: stop });
+              }
+              const entry = stationMap.get(key);
+              entry.coords.push([parseFloat(stop.lat), parseFloat(stop.lon)]);
+            });
+          });
+
+          const merged = [];
+          for (const [, entry] of stationMap) {
+            const coords = entry.coords;
+            if (coords.length === 0) continue;
+            // Compute midpoint of all platform coordinates
+            const sumLat = coords.reduce((s, c) => s + c[0], 0);
+            const sumLon = coords.reduce((s, c) => s + c[1], 0);
+            const midLat = sumLat / coords.length;
+            const midLon = sumLon / coords.length;
+
+            // Snap midpoint to the given shape (if available)
+            let snapLat = midLat,
+              snapLon = midLon;
+            if (shapeCoords && shapeCoords.length >= 2) {
+              try {
+                const line = turf.lineString(shapeCoords);
+                const snapped = turf.nearestPointOnLine(line, turf.point([midLon, midLat]), {
+                  units: 'meters',
+                });
+                snapLon = snapped.geometry.coordinates[0];
+                snapLat = snapped.geometry.coordinates[1];
+              } catch (e) {}
+            }
+
+            const rep = entry.representative;
+            merged.push({
+              ...rep,
+              lat: snapLat,
+              lon: snapLon,
+              name: rep.parent_station_name || rep.name,
+              isMerged: true,
+            });
+          }
+          return merged;
+        }
+
+        function renderSubwayMergedStops(routeId, fullData) {
+          if (subwayStopLayers.has(routeId)) {
+            map.removeLayer(subwayStopLayers.get(routeId));
+            subwayStopLayers.delete(routeId);
+          }
+
+          // Choose a shape to snap stops to: first visible itinerary with a shape
+          const selectedBranch = selectedBranchByRoute.get(routeId) ?? 'ALL';
+          let shapeCoords = null;
+          for (const it of fullData.itineraries || []) {
+            const dirOk = activeDirection === 'both' || activeDirection === String(it.direction_id);
+            const branchOk = selectedBranch === 'ALL' || (it.branch_code || '') === selectedBranch;
+            if (dirOk && branchOk && it.shape && it.shape.coordinates) {
+              shapeCoords =
+                it.shape.type === 'MultiLineString'
+                  ? it.shape.coordinates[0].map((c) => [c[0], c[1]])
+                  : it.shape.coordinates.map((c) => [c[0], c[1]]);
+              break;
+            }
+          }
+
+          const mergedStops = mergeSubwayStops(fullData, shapeCoords);
+          if (mergedStops.length === 0) return;
+
+          const color = fullData.color ? `#${fullData.color}` : '#888';
+          const layer = L.layerGroup();
+          mergedStops.forEach((stop) => {
+            const lat = stop.lat;
+            const lon = stop.lon;
+            if (isNaN(lat) || isNaN(lon)) return;
+
+            const dotEl = document.createElement('div');
+            dotEl.className = 'stop-dot';
+            dotEl.style.backgroundColor = color;
+            const borderColor = getContrastColor(color) === '#000000' ? '#333' : '#fff';
+            dotEl.style.borderColor = borderColor;
+
+            const icon = L.divIcon({
+              html: dotEl.outerHTML,
+              className: '',
+              iconSize: [10, 10],
+              iconAnchor: [5, 5],
+            });
+
+            const marker = L.marker([lat, lon], { icon, stopData: stop });
+            marker.bindTooltip(`<strong>${stop.name || 'Stop'}</strong>`, { direction: 'top' });
+            marker.bindPopup(`
+            <div style="font-family:sans-serif;min-width:180px;">
+              <strong style="font-size:1rem;">${stop.name || 'Stop'}</strong>
+              <br><small>📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
+              ${stop.global_stop_id ? `<br><small>🆔 ${stop.global_stop_id}</small>` : ''}
+              ${stop.wheelchair_boarding !== undefined ? `<br><small>♿ ${stop.wheelchair_boarding === 1 ? 'yes' : 'no'}</small>` : ''}
+            </div>`);
+            layer.addLayer(marker);
+          });
+
+          layer.addTo(map);
+          subwayStopLayers.set(routeId, layer);
+        }
+
+        // ----- Rendering a single itinerary (no individual stops for subway) -----
         function renderItinerary(route, itinerary) {
           const key = makeLayerKey(
             route.global_route_id,
@@ -561,22 +678,20 @@
               { sticky: true, className: 'polyline-tooltip', direction: 'top' },
             );
             polyline.bindPopup(`
-                <div style="font-family:sans-serif;min-width:160px;">
-                    <strong style="font-size:1rem;">${route.short_name || route.long_name}${branchLabel}</strong>
-                    <br><small>${route.long_name || ''}</small>
-                    <br><small>Mode: ${route.mode_name || '?'}</small>
-                    <br><small>Direction: ${itinerary.headsign || '?'}</small>
-                    <br><small>Route ID: ${route.global_route_id}</small>
-                </div>
-            `);
+            <div style="font-family:sans-serif;min-width:160px;">
+              <strong style="font-size:1rem;">${route.short_name || route.long_name}${branchLabel}</strong>
+              <br><small>${route.long_name || ''}</small>
+              <br><small>Mode: ${route.mode_name || '?'}</small>
+              <br><small>Direction: ${itinerary.headsign || '?'}</small>
+              <br><small>Route ID: ${route.global_route_id}</small>
+            </div>`);
           }
 
-          const markerGroup = L.layerGroup();
-          const stopMarkers = [];
-          if (itinerary.stops && Array.isArray(itinerary.stops)) {
-            let lineFeature = null;
-            if (coords.length >= 2) lineFeature = turf.lineString(coords);
-
+          // For non-subway routes, add individual stop markers
+          let markerGroup = L.layerGroup();
+          let stopMarkers = [];
+          if (route.route_type !== 1 && itinerary.stops) {
+            let lineFeature = coords.length >= 2 ? turf.lineString(coords) : null;
             itinerary.stops.forEach((stop) => {
               let lat = parseFloat(stop.lat);
               let lon = parseFloat(stop.lon);
@@ -612,16 +727,15 @@
                     : ''),
                 { direction: 'top' },
               );
-              const popupContent = `
-                    <div style="font-family:sans-serif;min-width:180px;">
-                        <strong style="font-size:1rem;">${stop.name || 'Stop'}</strong>
-                        ${stop.parent_station_name ? `<br><small>🏛 ${stop.parent_station_name}</small>` : ''}
-                        <br><small>📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
-                        ${stop.global_stop_id ? `<br><small>🆔 ${stop.global_stop_id}</small>` : ''}
-                        ${stop.stop_code ? `<br><small>🔢 Code: ${stop.stop_code}</small>` : ''}
-                        ${stop.wheelchair_boarding !== undefined ? `<br><small>♿ ${stop.wheelchair_boarding === 1 ? 'yes' : 'no'}</small>` : ''}
-                    </div>`;
-              marker.bindPopup(popupContent);
+              marker.bindPopup(`
+              <div style="font-family:sans-serif;min-width:180px;">
+                <strong style="font-size:1rem;">${stop.name || 'Stop'}</strong>
+                ${stop.parent_station_name ? `<br><small>🏛 ${stop.parent_station_name}</small>` : ''}
+                <br><small>📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
+                ${stop.global_stop_id ? `<br><small>🆔 ${stop.global_stop_id}</small>` : ''}
+                ${stop.stop_code ? `<br><small>🔢 Code: ${stop.stop_code}</small>` : ''}
+                ${stop.wheelchair_boarding !== undefined ? `<br><small>♿ ${stop.wheelchair_boarding === 1 ? 'yes' : 'no'}</small>` : ''}
+              </div>`);
               markerGroup.addLayer(marker);
               stopMarkers.push(marker);
             });
@@ -650,6 +764,10 @@
           for (const key of Array.from(layerRegistry.keys())) {
             if (key.startsWith(prefix)) removeItineraryLayer(key);
           }
+          if (subwayStopLayers.has(routeId)) {
+            map.removeLayer(subwayStopLayers.get(routeId));
+            subwayStopLayers.delete(routeId);
+          }
         }
 
         function renderRouteFromCache(routeId) {
@@ -675,6 +793,11 @@
             if (dirOk && branchOk) renderItinerary(routeMeta, it);
           });
 
+          // Subway: merged stops snapped to shape
+          if (fullData.route_type === 1) {
+            renderSubwayMergedStops(routeId, fullData);
+          }
+
           updateStats();
           updateDynamicLabels();
           updateStopVisibility();
@@ -690,9 +813,7 @@
           updateRouteListItemLoadingState(routeId, true);
 
           try {
-            const resp = await fetch(routeFullUrl(routeId));
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
+            const data = await fetchJson(routeFullUrl(routeId));
             routeDataCache.set(routeId, data);
             selectedBranchByRoute.set(routeId, 'ALL');
             renderBranchChips(routeId);
@@ -797,11 +918,11 @@
             li.dataset.modeName = route.mode_name || '';
             li.classList.add('dimmed');
             li.innerHTML = `
-                <span class="route-swatch" style="background:${colorHex};color:${textHex};">
-                    ${(route.short_name || route.long_name || '?').charAt(0).toUpperCase()}
-                </span>
-                <span class="route-name">${label}</span>
-                <span class="route-badge">${route.mode_name || ''}</span>`;
+            <span class="route-swatch" style="background:${colorHex};color:${textHex};">
+              ${(route.short_name || route.long_name || '?').charAt(0).toUpperCase()}
+            </span>
+            <span class="route-name">${label}</span>
+            <span class="route-badge">${route.mode_name || ''}</span>`;
 
             li.addEventListener('click', () => {
               if (visibleRouteIds.has(rid)) {
@@ -874,14 +995,11 @@
           updateStopVisibility();
         });
 
-        // ----- Load initial route list -----
         async function loadRouteList() {
           loadingOverlay.classList.remove('hidden');
           errorBanner.style.display = 'none';
           try {
-            const resp = await fetch(ROUTES_URL);
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
+            const data = await fetchJson(ROUTES_URL);
             if (!Array.isArray(data)) throw new Error('Unexpected format');
             routesList = data;
 
@@ -906,17 +1024,16 @@
           }
         }
 
-        // Extra tooltip/popup styles
         const style = document.createElement('style');
         style.textContent = `
         .polyline-tooltip {
-            font-family:'Segoe UI',system-ui,sans-serif; font-size:0.8rem; font-weight:600;
-            background:rgba(30,30,46,0.92); color:#fff; border:none;
-            border-radius:6px; padding:4px 10px; box-shadow:0 2px 8px rgba(0,0,0,0.4);
+          font-family:'Segoe UI',system-ui,sans-serif; font-size:0.8rem; font-weight:600;
+          background:rgba(30,30,46,0.92); color:#fff; border:1px solid rgba(255,255,255,0.12);
+          border-radius:6px; padding:4px 10px;
         }
         .leaflet-tooltip { font-family:'Segoe UI',system-ui,sans-serif; font-size:0.78rem; }
         .leaflet-popup-content { font-family:'Segoe UI',system-ui,sans-serif; font-size:0.82rem; line-height:1.4; }
-    `;
+      `;
         document.head.appendChild(style);
         loadRouteList();
       })();

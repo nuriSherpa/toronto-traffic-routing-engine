@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transit API — Test Console</title>
+    <style>
+      :root {
+        --bg: #12121c;
+        --panel-bg: #1e1e2e;
+        --panel-text: #e0e0e0;
+        --accent: #f59e0b;
+        --divider: #333348;
+        --green: #22c55e;
+        --red: #ef4444;
+        --muted: #888;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          'Segoe UI',
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--panel-text);
+        min-height: 100vh;
+        padding: 24px;
+      }
+      header {
+        max-width: 1100px;
+        margin: 0 auto 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      header h1 {
+        font-size: 1.4rem;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      header .subtitle {
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      .base-url-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        background: var(--panel-bg);
+        border: 1px solid var(--divider);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .base-url-row label {
+        font-size: 0.75rem;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .base-url-row input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: #fff;
+        font-family: 'Consolas', monospace;
+        font-size: 0.85rem;
+        outline: none;
+      }
+      .base-url-row button,
+      .run-all-btn {
+        background: var(--accent);
+        color: #1a1a1a;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-weight: 700;
+        font-size: 0.78rem;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: opacity 0.15s;
+      }
+      .base-url-row button:hover,
+      .run-all-btn:hover {
+        opacity: 0.85;
+      }
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      #summary {
+        font-size: 0.8rem;
+        color: var(--muted);
+        display: flex;
+        gap: 14px;
+      }
+      #summary span.ok {
+        color: var(--green);
+      }
+      #summary span.fail {
+        color: var(--red);
+      }
+
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: var(--panel-bg);
+        border: 1px solid var(--divider);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .card-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: #fff;
+      }
+      .method-badge {
+        font-size: 0.65rem;
+        font-weight: 800;
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--accent);
+        padding: 2px 7px;
+        border-radius: 5px;
+        letter-spacing: 0.03em;
+      }
+      .card-path {
+        font-family: 'Consolas', monospace;
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+      .status-badge {
+        font-size: 0.68rem;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--divider);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .status-badge.pending {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .status-badge.ok {
+        color: var(--green);
+        border-color: var(--green);
+      }
+      .status-badge.fail {
+        color: var(--red);
+        border-color: var(--red);
+      }
+      .param-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .param-row label {
+        font-size: 0.72rem;
+        color: var(--muted);
+        min-width: 70px;
+      }
+      .param-row input,
+      .param-row select {
+        flex: 1;
+        background: #14141f;
+        border: 1px solid var(--divider);
+        border-radius: 6px;
+        padding: 6px 8px;
+        color: #fff;
+        font-size: 0.8rem;
+        font-family: 'Consolas', monospace;
+      }
+      .param-row .fill-btn {
+        background: transparent;
+        border: 1px solid var(--divider);
+        color: var(--muted);
+        border-radius: 6px;
+        padding: 5px 8px;
+        font-size: 0.68rem;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .param-row .fill-btn:hover {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .card-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .send-btn {
+        background: var(--accent);
+        color: #1a1a1a;
+        border: none;
+        border-radius: 8px;
+        padding: 7px 16px;
+        font-weight: 700;
+        font-size: 0.78rem;
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .send-btn:hover {
+        opacity: 0.85;
+      }
+      .send-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .elapsed {
+        font-size: 0.7rem;
+        color: var(--muted);
+      }
+      .response-box {
+        background: #0c0c14;
+        border: 1px solid var(--divider);
+        border-radius: 8px;
+        padding: 10px;
+        max-height: 220px;
+        overflow: auto;
+        font-family: 'Consolas', monospace;
+        font-size: 0.72rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #ccc;
+        display: none;
+      }
+      .response-box.visible {
+        display: block;
+      }
+      .response-box .key {
+        color: #7dd3fc;
+      }
+      .response-box.error-text {
+        color: var(--red);
+      }
+      footer {
+        max-width: 1100px;
+        margin: 24px auto 0;
+        font-size: 0.72rem;
+        color: var(--muted);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>🧪 Transit API — Test Console</h1>
+        <p class="subtitle">Exercises every /api/v1 endpoint against your running server</p>
+      </div>
+      <div class="base-url-row">
+        <label for="base-url">Base URL</label>
+        <input id="base-url" type="text" value="http://localhost:3000/api/v1" />
+        <button id="save-base-url">Save</button>
+      </div>
+      <div class="toolbar">
+        <button class="run-all-btn" id="run-all">▶ Run all endpoints</button>
+        <div id="summary"></div>
+      </div>
+    </header>
+
+    <main id="cards"></main>
+
+    <footer>
+      Responses shown are raw JSON from the server, unwrapped from nothing — envelope included.
+    </footer>
+
+    <script>
+      (function () {
+        const STORAGE_KEY = 'transit_api_console_base_url';
+        const baseUrlInput = document.getElementById('base-url');
+        const saveBaseUrlBtn = document.getElementById('save-base-url');
+        const cardsEl = document.getElementById('cards');
+        const runAllBtn = document.getElementById('run-all');
+        const summaryEl = document.getElementById('summary');
+
+        const savedBaseUrl = localStorage.getItem(STORAGE_KEY);
+        if (savedBaseUrl) baseUrlInput.value = savedBaseUrl;
+        saveBaseUrlBtn.addEventListener('click', () => {
+          localStorage.setItem(STORAGE_KEY, baseUrlInput.value.trim());
+          flashSaved();
+        });
+        function flashSaved() {
+          const original = saveBaseUrlBtn.textContent;
+          saveBaseUrlBtn.textContent = 'Saved ✓';
+          setTimeout(() => (saveBaseUrlBtn.textContent = original), 1200);
+        }
+
+        // Sample values captured from list endpoints, used to auto-fill
+        // id-based endpoints (route/stop detail) via the "Use sample" buttons.
+        let sampleRoute = null; // { global_route_id, short_name }
+        let sampleStop = null; // { global_stop_id, name }
+
+        // ---------------------------------------------------------------
+        // Endpoint definitions
+        // ---------------------------------------------------------------
+        const ENDPOINTS = [
+          {
+            id: 'routes',
+            method: 'GET',
+            label: 'All Routes',
+            path: () => '/routes',
+            params: [],
+            onSuccess: (data) => {
+              if (Array.isArray(data) && data.length) {
+                sampleRoute = data[0];
+              }
+            },
+          },
+          {
+            id: 'network',
+            method: 'GET',
+            label: 'Network (map data)',
+            path: () => '/network',
+            params: [
+              {
+                name: 'route_type',
+                type: 'select',
+                options: [
+                  { value: '', label: 'All modes' },
+                  { value: '0', label: 'Streetcar (0)' },
+                  { value: '1', label: 'Subway (1)' },
+                  { value: '3', label: 'Bus (3)' },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'route-stops',
+            method: 'GET',
+            label: "Route's Canonical Stops",
+            path: (p) => `/routes/${encodeURIComponent(p.routeId)}/stops`,
+            query: (p) => ({ direction: p.direction }),
+            params: [
+              {
+                name: 'routeId',
+                type: 'text',
+                placeholder: 'e.g. TTC:504',
+                required: true,
+                fillFrom: 'route',
+              },
+              {
+                name: 'direction',
+                type: 'select',
+                options: [
+                  { value: '0', label: 'Outbound (0)' },
+                  { value: '1', label: 'Inbound (1)' },
+                ],
+              },
+            ],
+          },
+          {
+            id: 'route-shape',
+            method: 'GET',
+            label: 'Route Shape',
+            path: (p) => `/routes/${encodeURIComponent(p.routeId)}/shape`,
+            params: [
+              {
+                name: 'routeId',
+                type: 'text',
+                placeholder: 'e.g. TTC:504',
+                required: true,
+                fillFrom: 'route',
+              },
+            ],
+          },
+          {
+            id: 'route-full',
+            method: 'GET',
+            label: 'Route Full Detail',
+            path: (p) => `/routes/${encodeURIComponent(p.routeId)}/full`,
+            params: [
+              {
+                name: 'routeId',
+                type: 'text',
+                placeholder: 'e.g. TTC:504',
+                required: true,
+                fillFrom: 'route',
+              },
+            ],
+          },
+          {
+            id: 'stops',
+            method: 'GET',
+            label: 'All Stops',
+            path: () => '/stops',
+            params: [],
+            onSuccess: (data) => {
+              if (Array.isArray(data) && data.length) {
+                sampleStop = data[0];
+              }
+            },
+          },
+          {
+            id: 'stop-detail',
+            method: 'GET',
+            label: 'Stop Detail',
+            path: (p) => `/stops/${encodeURIComponent(p.stopId)}`,
+            params: [
+              {
+                name: 'stopId',
+                type: 'text',
+                placeholder: 'e.g. TTC:94380',
+                required: true,
+                fillFrom: 'stop',
+              },
+            ],
+          },
+          {
+            id: 'stops-nearby',
+            method: 'GET',
+            label: 'Nearby Stops',
+            path: () => '/stops/nearby',
+            query: (p) => ({ lat: p.lat, lon: p.lon, limit: p.limit }),
+            params: [
+              {
+                name: 'lat',
+                type: 'text',
+                placeholder: '43.6532',
+                required: true,
+                default: '43.6532',
+              },
+              {
+                name: 'lon',
+                type: 'text',
+                placeholder: '-79.3832',
+                required: true,
+                default: '-79.3832',
+              },
+              { name: 'limit', type: 'text', placeholder: '5', default: '5' },
+            ],
+          },
+          {
+            id: 'not-found-check',
+            method: 'GET',
+            label: '404 Sanity Check (should fail)',
+            path: () => '/routes/DOES_NOT_EXIST/shape',
+            params: [],
+            expectFailure: true,
+          },
+        ];
+
+        // ---------------------------------------------------------------
+        // Rendering
+        // ---------------------------------------------------------------
+        const cardState = new Map(); // id -> { values, statusEl, responseEl, elapsedEl, sendBtn }
+
+        function buildQueryString(query) {
+          if (!query) return '';
+          const usable = Object.entries(query).filter(
+            ([, v]) => v !== undefined && v !== null && v !== '',
+          );
+          if (!usable.length) return '';
+          const params = new URLSearchParams();
+          usable.forEach(([k, v]) => params.set(k, v));
+          return `?${params.toString()}`;
+        }
+
+        function getSampleValue(fillFrom) {
+          if (fillFrom === 'route') return sampleRoute ? sampleRoute.global_route_id : null;
+          if (fillFrom === 'stop') return sampleStop ? sampleStop.global_stop_id : null;
+          return null;
+        }
+
+        function renderCard(endpoint) {
+          const card = document.createElement('div');
+          card.className = 'card';
+
+          const head = document.createElement('div');
+          head.className = 'card-head';
+          head.innerHTML = `
+            <div>
+              <div class="card-title">
+                <span class="method-badge">${endpoint.method}</span>
+                <span>${endpoint.label}</span>
+              </div>
+              <div class="card-path" data-path-preview></div>
+            </div>
+            <span class="status-badge" data-status>idle</span>
+          `;
+          card.appendChild(head);
+
+          const values = {};
+          endpoint.params.forEach((p) => {
+            const row = document.createElement('div');
+            row.className = 'param-row';
+            const label = document.createElement('label');
+            label.textContent = p.name;
+            row.appendChild(label);
+
+            let input;
+            if (p.type === 'select') {
+              input = document.createElement('select');
+              p.options.forEach((opt) => {
+                const o = document.createElement('option');
+                o.value = opt.value;
+                o.textContent = opt.label;
+                input.appendChild(o);
+              });
+            } else {
+              input = document.createElement('input');
+              input.type = 'text';
+              input.placeholder = p.placeholder || '';
+              if (p.default) input.value = p.default;
+            }
+            input.addEventListener('input', () => {
+              values[p.name] = input.value;
+              updatePathPreview();
+            });
+            values[p.name] = input.value || '';
+            row.appendChild(input);
+
+            if (p.fillFrom) {
+              const fillBtn = document.createElement('button');
+              fillBtn.type = 'button';
+              fillBtn.className = 'fill-btn';
+              fillBtn.textContent = 'Use sample';
+              fillBtn.addEventListener('click', () => {
+                const sample = getSampleValue(p.fillFrom);
+                if (!sample) {
+                  alert(
+                    `No sample ${p.fillFrom} yet — run "${p.fillFrom === 'route' ? 'All Routes' : 'All Stops'}" first.`,
+                  );
+                  return;
+                }
+                input.value = sample;
+                values[p.name] = sample;
+                updatePathPreview();
+              });
+              row.appendChild(fillBtn);
+            }
+
+            card.appendChild(row);
+          });
+
+          const pathPreview = head.querySelector('[data-path-preview]');
+          function updatePathPreview() {
+            const path = endpoint.path(values);
+            const query = endpoint.query ? buildQueryString(endpoint.query(values)) : '';
+            pathPreview.textContent = path + query;
+          }
+          updatePathPreview();
+
+          const actions = document.createElement('div');
+          actions.className = 'card-actions';
+          const sendBtn = document.createElement('button');
+          sendBtn.className = 'send-btn';
+          sendBtn.textContent = 'Send';
+          const elapsedEl = document.createElement('span');
+          elapsedEl.className = 'elapsed';
+          actions.appendChild(sendBtn);
+          actions.appendChild(elapsedEl);
+          card.appendChild(actions);
+
+          const responseEl = document.createElement('pre');
+          responseEl.className = 'response-box';
+          card.appendChild(responseEl);
+
+          sendBtn.addEventListener('click', () => runEndpoint(endpoint, values, true));
+
+          cardState.set(endpoint.id, {
+            values,
+            statusEl: head.querySelector('[data-status]'),
+            responseEl,
+            elapsedEl,
+            sendBtn,
+            updatePathPreview,
+          });
+
+          cardsEl.appendChild(card);
+        }
+
+        ENDPOINTS.forEach(renderCard);
+
+        // ---------------------------------------------------------------
+        // Request execution
+        // ---------------------------------------------------------------
+        const results = new Map(); // id -> 'ok' | 'fail' | undefined
+
+        function setStatus(state, status, text) {
+          state.statusEl.className = `status-badge ${status}`;
+          state.statusEl.textContent = text;
+        }
+
+        function renderSummary() {
+          const total = ENDPOINTS.length;
+          const done = results.size;
+          const ok = [...results.values()].filter((r) => r === 'ok').length;
+          const fail = [...results.values()].filter((r) => r === 'fail').length;
+          summaryEl.innerHTML = `
+            <span>${done}/${total} run</span>
+            <span class="ok">${ok} passed</span>
+            <span class="fail">${fail} failed</span>
+          `;
+        }
+
+        async function runEndpoint(endpoint, values, manual) {
+          const state = cardState.get(endpoint.id);
+          const missing = endpoint.params.filter((p) => p.required && !values[p.name]);
+          if (missing.length) {
+            setStatus(state, 'fail', `missing: ${missing.map((p) => p.name).join(', ')}`);
+            results.set(endpoint.id, 'fail');
+            renderSummary();
+            return;
+          }
+
+          state.sendBtn.disabled = true;
+          setStatus(state, 'pending', 'running…');
+          state.responseEl.classList.remove('visible', 'error-text');
+          state.elapsedEl.textContent = '';
+
+          const base = baseUrlInput.value.trim().replace(/\/$/, '');
+          const path = endpoint.path(values);
+          const query = endpoint.query ? buildQueryString(endpoint.query(values)) : '';
+          const url = `${base}${path}${query}`;
+
+          const started = performance.now();
+          try {
+            const resp = await fetch(url);
+            const elapsed = Math.round(performance.now() - started);
+            state.elapsedEl.textContent = `${elapsed}ms · HTTP ${resp.status}`;
+
+            let payload = null;
+            try {
+              payload = await resp.json();
+            } catch (e) {
+              throw new Error('Response was not valid JSON');
+            }
+
+            state.responseEl.textContent = JSON.stringify(payload, null, 2);
+            state.responseEl.classList.add('visible');
+
+            const succeeded = resp.ok && payload && payload.success !== false;
+
+            if (endpoint.expectFailure) {
+              // This card is expected to fail (404 sanity check) — a
+              // non-2xx with a proper error envelope counts as a pass.
+              const properErrorShape =
+                !resp.ok && payload && payload.success === false && payload.error;
+              if (properErrorShape) {
+                setStatus(state, 'ok', `expected fail ✓ (${resp.status})`);
+                results.set(endpoint.id, 'ok');
+              } else {
+                setStatus(state, 'fail', 'unexpected shape');
+                results.set(endpoint.id, 'fail');
+              }
+            } else if (succeeded) {
+              setStatus(state, 'ok', `${resp.status} ok`);
+              results.set(endpoint.id, 'ok');
+              if (endpoint.onSuccess) endpoint.onSuccess(payload.data);
+            } else {
+              const msg =
+                payload && payload.error && payload.error.message
+                  ? payload.error.message
+                  : `HTTP ${resp.status}`;
+              setStatus(state, 'fail', msg.length > 24 ? msg.slice(0, 24) + '…' : msg);
+              results.set(endpoint.id, 'fail');
+            }
+          } catch (err) {
+            const elapsed = Math.round(performance.now() - started);
+            state.elapsedEl.textContent = `${elapsed}ms · network error`;
+            state.responseEl.textContent = `Request failed: ${err.message}\n\nIs the server running at ${base}?\nIs CORS enabled for this origin?`;
+            state.responseEl.classList.add('visible', 'error-text');
+            setStatus(state, 'fail', 'network error');
+            results.set(endpoint.id, 'fail');
+          } finally {
+            state.sendBtn.disabled = false;
+            renderSummary();
+          }
+        }
+
+        // ---------------------------------------------------------------
+        // Run all — routes and stops first (to seed samples), then the rest
+        // ---------------------------------------------------------------
+        async function runAll() {
+          runAllBtn.disabled = true;
+          results.clear();
+          renderSummary();
+
+          const seedFirst = ENDPOINTS.filter((e) => e.id === 'routes' || e.id === 'stops');
+          const rest = ENDPOINTS.filter((e) => e.id !== 'routes' && e.id !== 'stops');
+
+          for (const endpoint of seedFirst) {
+            const state = cardState.get(endpoint.id);
+            await runEndpoint(endpoint, state.values, false);
+          }
+
+          // Auto-fill id-based inputs from the samples we just captured.
+          rest.forEach((endpoint) => {
+            const state = cardState.get(endpoint.id);
+            endpoint.params.forEach((p) => {
+              if (!p.fillFrom) return;
+              const sample = getSampleValue(p.fillFrom);
+              if (sample) {
+                state.values[p.name] = sample;
+                const input = document.querySelector(`.card:has([data-status]) input`); // fallback not reliable; set via state directly below
+              }
+            });
+          });
+
+          // Re-sync visible input fields with the auto-filled sample values
+          rest.forEach((endpoint) => {
+            const state = cardState.get(endpoint.id);
+            endpoint.params.forEach((p) => {
+              if (!p.fillFrom) return;
+              const sample = getSampleValue(p.fillFrom);
+              if (!sample) return;
+              state.values[p.name] = sample;
+            });
+            state.updatePathPreview();
+          });
+
+          for (const endpoint of rest) {
+            const state = cardState.get(endpoint.id);
+            await runEndpoint(endpoint, state.values, false);
+          }
+
+          runAllBtn.disabled = false;
+        }
+
+        runAllBtn.addEventListener('click', runAll);
+      })();
+    </script>
+  </body>
+</html>

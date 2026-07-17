@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
+    "pbf": "^3.2.1"
+  }
+}

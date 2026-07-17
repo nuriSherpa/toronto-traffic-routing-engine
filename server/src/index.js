@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import { healthRouter } from './routes/health.js';
-import { staticRouter } from './routes/static.js';
 import { liveRouter } from './routes/live.js';
+import { apiRouter } from './routes/index.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,14 +21,13 @@ app.get('/', (req, res) => {
 });
 
 app.use(healthRouter);
-app.use(staticRouter);
+app.use('/api/v1', apiRouter); // routes/stops/network endpoints, versioned
 app.use(liveRouter);
 
-// Basic error handler
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'internal_server_error' });
-});
+// 404 for anything that fell through, then the central error handler.
+// Must stay in this order, and errorHandler must be last.
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
