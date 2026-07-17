@@ -1,0 +1,21 @@
+{
+  "name": "transit-bunching-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "import:network": "node src/scripts/import-network.js",
+    "reimport:affected": "node src/scripts/reimportAffectedRoutes.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "pg-copy-streams": "^6.0.6",
+    "ioredis": "^5.4.1",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3"
+  }
+}

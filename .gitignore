@@ -1,0 +1,75 @@
+# =========================================================
+#  IMPORTANT / SENSITIVE FILES (do NOT commit these)
+# =========================================================
+
+# Environment variable files (often contain secrets)
+.env
+.env.*
+!.env.example          # allow the example file if you have one
+
+# Credentials and keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+credentials.json
+service-account.json
+secret*
+secrets.yml
+secrets.yaml
+
+# Configuration files that might contain passwords / tokens
+config/local.yml
+config/database.yml
+*.private.config
+appsettings.*.json     # be careful: allow tracked base version with !appsettings.json
+
+# Cloud / infra secrets
+terraform.tfvars
+*.auto.tfvars
+override.tf
+override.tf.json
+.terraform/
+*.tfstate*
+*.tfplan
+
+# Docker / Compose overrides (often have dev secrets)
+docker-compose.override.yml
+
+# =========================================================
+#  COMMON UNIMPORTANT / GENERATED FILES (safe to ignore)
+# =========================================================
+
+# Dependencies
+node_modules/
+vendor/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+*.pyc
+__pycache__/
+*.class
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

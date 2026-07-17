@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    platform: linux/amd64
+    container_name: transit_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-transit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-transit_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-transit_bunching}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-transit} -d ${POSTGRES_DB:-transit_bunching}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: transit_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+    container_name: transit_server
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-transit}:${POSTGRES_PASSWORD:-transit_pw}@postgres:5432/${POSTGRES_DB:-transit_bunching}
+      REDIS_URL: redis://redis:6379
+      TRANSIT_API_KEY: ${TRANSIT_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./server/src:/app/src
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  redis_data:

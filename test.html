@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transit Map – Toronto (Smart Labels & Stops)</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      :root {
+        --panel-bg: #1e1e2e;
+        --panel-text: #e0e0e0;
+        --accent: #f59e0b;
+        --divider: #333348;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          'Segoe UI',
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #12121c;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+      }
+      #map {
+        height: 100%;
+        width: 100%;
+        z-index: 1;
+        background: #f2f2f2;
+      }
+      #sidebar {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 1000;
+        background: var(--panel-bg);
+        color: var(--panel-text);
+        border-radius: 14px;
+        padding: 20px 16px 16px;
+        width: 300px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      #sidebar h2 {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #fff;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #sidebar .icon {
+        font-size: 1.3rem;
+      }
+      #sidebar .subtitle {
+        font-size: 0.75rem;
+        color: #999;
+        margin-top: -6px;
+        margin-bottom: 2px;
+      }
+      #sidebar .divider {
+        height: 1px;
+        background: var(--divider);
+        border: none;
+        margin: 4px 0;
+      }
+      #route-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      #route-list li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          opacity 0.15s;
+        user-select: none;
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+      #route-list li:hover {
+        background: rgba(255, 255, 255, 0.06);
+      }
+      #route-list li.dimmed {
+        opacity: 0.35;
+      }
+      .route-swatch {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.7rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        border: 2px solid transparent;
+        transition: border-color 0.2s;
+      }
+      #route-list li.dimmed .route-swatch {
+        border-color: transparent;
+      }
+      #route-list li:not(.dimmed) .route-swatch {
+        border-color: rgba(255, 255, 255, 0.7);
+      }
+      .route-name {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: #ddd;
+      }
+      .route-badge {
+        font-size: 0.7rem;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 3px 7px;
+        border-radius: 10px;
+        color: #aaa;
+      }
+      #direction-toggle {
+        display: flex;
+        gap: 6px;
+      }
+      #direction-toggle button {
+        flex: 1;
+        padding: 7px 0;
+        border-radius: 8px;
+        border: 1px solid var(--divider);
+        background: transparent;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 500;
+        transition: all 0.2s;
+      }
+      #direction-toggle button.active {
+        background: var(--accent);
+        color: #1a1a1a;
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      #direction-toggle button:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      #toggle-all-btn {
+        padding: 8px 0;
+        border-radius: 8px;
+        border: 1px solid var(--divider);
+        background: transparent;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 600;
+        transition: all 0.2s;
+        text-align: center;
+      }
+      #toggle-all-btn:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      #stats {
+        font-size: 0.72rem;
+        color: #777;
+        text-align: center;
+        margin-top: 2px;
+      }
+      #loading-overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2000;
+        background: var(--panel-bg);
+        color: #fff;
+        padding: 16px 28px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+        transition: opacity 0.3s;
+      }
+      #loading-overlay.hidden {
+        opacity: 0;
+      }
+      #error-banner {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2000;
+        background: #e74c3c;
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        display: none;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      }
+
+      /* Route label styles */
+      .subway-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        font-weight: 800;
+        font-size: 13px;
+        line-height: 1;
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
+      .bus-label {
+        display: inline-block; /* shrink to content */
+        border-radius: 12px; /* rounded corners */
+        padding: 5px 10px; /* proper horizontal padding */
+        font-weight: 800;
+        font-size: 13px;
+        color: #fff; /* fallback, overridden inline */
+        line-height: 1.2;
+        text-align: center;
+        white-space: nowrap;
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .stop-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: none !important;
+        display: block;
+        transition: transform 0.15s;
+      }
+
+      @media (max-width: 600px) {
+        #sidebar {
+          width: 230px;
+          padding: 14px 10px 12px;
+          left: 6px;
+          top: 6px;
+          max-height: calc(100vh - 12px);
+          border-radius: 10px;
+        }
+      }
+
+      .branch-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 0 10px 6px 42px;
+      }
+      .branch-chip {
+        font-size: 0.68rem;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--divider);
+        background: transparent;
+        color: #bbb;
+        cursor: pointer;
+      }
+      .branch-chip.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #1a1a1a;
+        font-weight: 600;
+      }
+      .branch-chip:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.08);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <aside id="sidebar">
+      <h2><span class="icon">🚇</span> Transit Map</h2>
+      <p class="subtitle">Smart labels & stops · click route to load</p>
+      <hr class="divider" />
+      <button id="toggle-all-btn">Show / hide all routes</button>
+      <hr class="divider" />
+      <div id="direction-toggle">
+        <button id="btn-both" class="active" data-dir="both">Both</button>
+        <button id="btn-outbound" data-dir="0">Outbound</button>
+        <button id="btn-inbound" data-dir="1">Inbound</button>
+      </div>
+      <hr class="divider" />
+      <ul id="route-list"></ul>
+      <hr class="divider" />
+      <p id="stats"></p>
+    </aside>
+    <div id="loading-overlay">⏳ Loading routes…</div>
+    <div id="error-banner"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+    <script>
+      (function () {
+        const API_BASE = 'http://localhost:3000';
+        const ROUTES_URL = `${API_BASE}/routes`;
+        const routeFullUrl = (id) => `${API_BASE}/routes/${encodeURIComponent(id)}/full`;
+
+        const routeListEl = document.getElementById('route-list');
+        const statsEl = document.getElementById('stats');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const errorBanner = document.getElementById('error-banner');
+        const btnBoth = document.getElementById('btn-both');
+        const btnOutbound = document.getElementById('btn-outbound');
+        const btnInbound = document.getElementById('btn-inbound');
+        const toggleAllBtn = document.getElementById('toggle-all-btn');
+
+        let routesList = [];
+        let activeDirection = 'both';
+        let visibleRouteIds = new Set();
+        let loadingRouteIds = new Set();
+
+        const routeDataCache = new Map();
+        const selectedBranchByRoute = new Map();
+        const layerRegistry = new Map();
+        const dynamicMarkerMap = new Map();
+
+        const map = L.map('map', {
+          center: [43.7, -79.4],
+          zoom: 12,
+          zoomControl: true,
+          attributionControl: true,
+        });
+        map.setMaxBounds([
+          [43.58, -79.64],
+          [43.86, -79.12],
+        ]);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+          maxZoom: 19,
+        }).addTo(map);
+
+        // ----- Utility functions -----
+        function makeLayerKey(gid, dir, branch) {
+          return `${gid}__dir${dir}__branch${branch ?? ''}`;
+        }
+
+        function showError(msg) {
+          errorBanner.textContent = '❌ ' + msg;
+          errorBanner.style.display = 'block';
+          setTimeout(() => {
+            errorBanner.style.display = 'none';
+          }, 6000);
+        }
+
+        function getContrastColor(hex) {
+          if (!hex) return '#ffffff';
+          hex = hex.replace('#', '');
+          if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+          return yiq >= 128 ? '#000000' : '#ffffff';
+        }
+
+        function isMajorStop(stop) {
+          return !!(stop.parent_station_name || (stop.location_type && stop.location_type !== 0));
+        }
+
+        function shouldShowStop(stop, zoom) {
+          if (zoom >= 14) return true;
+          return isMajorStop(stop);
+        }
+
+        // ----- Visible midpoint of route -----
+        function getVisibleMidpoint(coords) {
+          if (coords.length < 2) return null;
+          const line = turf.lineString(coords);
+          const bounds = map.getBounds();
+          const viewPoly = turf.bboxPolygon([
+            bounds.getWest(),
+            bounds.getSouth(),
+            bounds.getEast(),
+            bounds.getNorth(),
+          ]);
+          try {
+            const clipped = turf.lineClip(line, viewPoly);
+            if (clipped && clipped.type === 'LineString' && clipped.coordinates.length >= 2) {
+              const centroid = turf.centroid(clipped);
+              return centroid.geometry.coordinates;
+            }
+          } catch (e) {}
+          const center = map.getCenter();
+          const pt = turf.point([center.lng, center.lat]);
+          const snapped = turf.nearestPointOnLine(line, pt, { units: 'kilometers' });
+          return snapped.geometry.coordinates;
+        }
+
+        // ----- Generate icon HTML -----
+        function getRouteIconHtml(route) {
+          const color = route.color ? `#${route.color}` : '#888';
+          const short = (route.short_name || route.long_name || '?').trim();
+          const type = route.route_type;
+          const textColor = getContrastColor(color);
+
+          if (type === 1) {
+            // Subway: circle
+            return `<div class="subway-label" style="background-color:${color}; color:${textColor};">${short}</div>`;
+          } else {
+            // Bus / streetcar: rounded rectangle
+            return `<div class="bus-label" style="background-color:${color}; color:${textColor};">${short}</div>`;
+          }
+        }
+
+        function createRouteIcon(route) {
+          const html = getRouteIconHtml(route);
+          const isSubway = route.route_type === 1;
+          // For subway circle: size 28x28, anchor [14,14] centres perfectly
+          // For bus: size [0,0] auto-sizes to content, anchor [20,12] centres roughly vertically & horizontally
+          const size = isSubway ? [28, 28] : [0, 0];
+          const anchor = isSubway ? [14, 14] : [22, 12]; // slight shift to centre the pill
+          return L.divIcon({
+            html: html,
+            className: '',
+            iconSize: size,
+            iconAnchor: anchor,
+          });
+        }
+
+        // ----- Dynamic labels -----
+        function updateDynamicLabels() {
+          const zoom = map.getZoom();
+          if (zoom < 13) {
+            dynamicMarkerMap.forEach((marker) => map.removeLayer(marker));
+            dynamicMarkerMap.clear();
+            return;
+          }
+
+          for (const [key, entry] of layerRegistry.entries()) {
+            if (
+              !entry.polyline ||
+              !map.hasLayer(entry.polyline) ||
+              !entry.coords ||
+              entry.coords.length < 2
+            ) {
+              if (dynamicMarkerMap.has(key)) {
+                map.removeLayer(dynamicMarkerMap.get(key));
+                dynamicMarkerMap.delete(key);
+              }
+              continue;
+            }
+
+            const midpoint = getVisibleMidpoint(entry.coords);
+            if (!midpoint) {
+              if (dynamicMarkerMap.has(key)) {
+                map.removeLayer(dynamicMarkerMap.get(key));
+                dynamicMarkerMap.delete(key);
+              }
+              continue;
+            }
+
+            const latLng = L.latLng(midpoint[1], midpoint[0]);
+            if (!map.getBounds().contains(latLng)) {
+              if (dynamicMarkerMap.has(key)) {
+                map.removeLayer(dynamicMarkerMap.get(key));
+                dynamicMarkerMap.delete(key);
+              }
+              continue;
+            }
+
+            if (dynamicMarkerMap.has(key)) {
+              dynamicMarkerMap.get(key).setLatLng(latLng);
+            } else {
+              const icon = createRouteIcon(entry.route);
+              const marker = L.marker(latLng, { icon, interactive: false }).addTo(map);
+              dynamicMarkerMap.set(key, marker);
+            }
+          }
+
+          for (const [key, marker] of dynamicMarkerMap.entries()) {
+            if (!layerRegistry.has(key)) {
+              map.removeLayer(marker);
+              dynamicMarkerMap.delete(key);
+            }
+          }
+        }
+
+        function updateStopVisibility() {
+          const bounds = map.getBounds();
+          const zoom = map.getZoom();
+          for (const [, entry] of layerRegistry.entries()) {
+            if (!entry.stopMarkers || !entry.polyline || !map.hasLayer(entry.polyline)) continue;
+            entry.stopMarkers.forEach((m) => {
+              const latLng = m.getLatLng();
+              const inView = bounds.contains(latLng);
+              const stop = m.options.stopData;
+              const showByZoom = stop ? shouldShowStop(stop, zoom) : true;
+              m.setOpacity(inView && showByZoom ? 1 : 0);
+            });
+          }
+        }
+
+        // ----- Rendering a single itinerary -----
+        function renderItinerary(route, itinerary) {
+          const key = makeLayerKey(
+            route.global_route_id,
+            itinerary.direction_id,
+            itinerary.branch_code,
+          );
+          const old = layerRegistry.get(key);
+          if (old) {
+            if (old.polyline) map.removeLayer(old.polyline);
+            if (old.markersLayer) map.removeLayer(old.markersLayer);
+            if (dynamicMarkerMap.has(key)) {
+              map.removeLayer(dynamicMarkerMap.get(key));
+              dynamicMarkerMap.delete(key);
+            }
+            layerRegistry.delete(key);
+          }
+
+          const color = route.color ? `#${route.color}` : '#888';
+          let polyline = null;
+          let coords = [];
+          if (itinerary.shape && itinerary.shape.coordinates) {
+            coords =
+              itinerary.shape.type === 'MultiLineString'
+                ? itinerary.shape.coordinates[0].map((c) => [c[0], c[1]])
+                : itinerary.shape.coordinates.map((c) => [c[0], c[1]]);
+            const latlngs = coords.map((c) => [c[1], c[0]]);
+            polyline = L.polyline(latlngs, {
+              color,
+              weight: 4.5,
+              opacity: 0.9,
+              lineCap: 'round',
+              lineJoin: 'round',
+            });
+            const branchLabel = itinerary.branch_code ? ` (${itinerary.branch_code})` : '';
+            polyline.bindTooltip(
+              `<strong>${route.short_name || route.long_name}${branchLabel}</strong> → ${itinerary.headsign || '?'}`,
+              { sticky: true, className: 'polyline-tooltip', direction: 'top' },
+            );
+            polyline.bindPopup(`
+                <div style="font-family:sans-serif;min-width:160px;">
+                    <strong style="font-size:1rem;">${route.short_name || route.long_name}${branchLabel}</strong>
+                    <br><small>${route.long_name || ''}</small>
+                    <br><small>Mode: ${route.mode_name || '?'}</small>
+                    <br><small>Direction: ${itinerary.headsign || '?'}</small>
+                    <br><small>Route ID: ${route.global_route_id}</small>
+                </div>
+            `);
+          }
+
+          const markerGroup = L.layerGroup();
+          const stopMarkers = [];
+          if (itinerary.stops && Array.isArray(itinerary.stops)) {
+            let lineFeature = null;
+            if (coords.length >= 2) lineFeature = turf.lineString(coords);
+
+            itinerary.stops.forEach((stop) => {
+              let lat = parseFloat(stop.lat);
+              let lon = parseFloat(stop.lon);
+              if (isNaN(lat) || isNaN(lon)) return;
+
+              if (lineFeature) {
+                try {
+                  const pt = turf.point([lon, lat]);
+                  const snapped = turf.nearestPointOnLine(lineFeature, pt, { units: 'meters' });
+                  lon = snapped.geometry.coordinates[0];
+                  lat = snapped.geometry.coordinates[1];
+                } catch (e) {}
+              }
+
+              const dotEl = document.createElement('div');
+              dotEl.className = 'stop-dot';
+              dotEl.style.backgroundColor = color;
+              const borderColor = getContrastColor(color) === '#000000' ? '#333' : '#fff';
+              dotEl.style.borderColor = borderColor;
+
+              const icon = L.divIcon({
+                html: dotEl.outerHTML,
+                className: '',
+                iconSize: [10, 10],
+                iconAnchor: [5, 5],
+              });
+
+              const marker = L.marker([lat, lon], { icon, stopData: stop });
+              marker.bindTooltip(
+                `<strong>${stop.name || 'Stop'}</strong>` +
+                  (stop.parent_station_name
+                    ? `<br><small>${stop.parent_station_name}</small>`
+                    : ''),
+                { direction: 'top' },
+              );
+              const popupContent = `
+                    <div style="font-family:sans-serif;min-width:180px;">
+                        <strong style="font-size:1rem;">${stop.name || 'Stop'}</strong>
+                        ${stop.parent_station_name ? `<br><small>🏛 ${stop.parent_station_name}</small>` : ''}
+                        <br><small>📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</small>
+                        ${stop.global_stop_id ? `<br><small>🆔 ${stop.global_stop_id}</small>` : ''}
+                        ${stop.stop_code ? `<br><small>🔢 Code: ${stop.stop_code}</small>` : ''}
+                        ${stop.wheelchair_boarding !== undefined ? `<br><small>♿ ${stop.wheelchair_boarding === 1 ? 'yes' : 'no'}</small>` : ''}
+                    </div>`;
+              marker.bindPopup(popupContent);
+              markerGroup.addLayer(marker);
+              stopMarkers.push(marker);
+            });
+          }
+
+          const entry = { polyline, markersLayer: markerGroup, stopMarkers, coords, route };
+          layerRegistry.set(key, entry);
+          if (polyline) polyline.addTo(map);
+          markerGroup.addTo(map);
+        }
+
+        function removeItineraryLayer(key) {
+          const e = layerRegistry.get(key);
+          if (!e) return;
+          if (e.polyline) map.removeLayer(e.polyline);
+          if (e.markersLayer) map.removeLayer(e.markersLayer);
+          layerRegistry.delete(key);
+          if (dynamicMarkerMap.has(key)) {
+            map.removeLayer(dynamicMarkerMap.get(key));
+            dynamicMarkerMap.delete(key);
+          }
+        }
+
+        function removeAllLayersForRoute(routeId) {
+          const prefix = `${routeId}__`;
+          for (const key of Array.from(layerRegistry.keys())) {
+            if (key.startsWith(prefix)) removeItineraryLayer(key);
+          }
+        }
+
+        function renderRouteFromCache(routeId) {
+          const fullData = routeDataCache.get(routeId);
+          if (!fullData) return;
+
+          removeAllLayersForRoute(routeId);
+
+          const selectedBranch = selectedBranchByRoute.get(routeId) ?? 'ALL';
+          const routeMeta = {
+            global_route_id: fullData.global_route_id,
+            short_name: fullData.short_name,
+            long_name: fullData.long_name,
+            color: fullData.color,
+            text_color: fullData.text_color,
+            route_type: fullData.route_type,
+            mode_name: fullData.mode_name,
+          };
+
+          (fullData.itineraries || []).forEach((it) => {
+            const dirOk = activeDirection === 'both' || activeDirection === String(it.direction_id);
+            const branchOk = selectedBranch === 'ALL' || (it.branch_code || '') === selectedBranch;
+            if (dirOk && branchOk) renderItinerary(routeMeta, it);
+          });
+
+          updateStats();
+          updateDynamicLabels();
+          updateStopVisibility();
+        }
+
+        async function fetchAndRenderRoute(routeId) {
+          if (routeDataCache.has(routeId)) {
+            renderRouteFromCache(routeId);
+            return;
+          }
+          if (loadingRouteIds.has(routeId)) return;
+          loadingRouteIds.add(routeId);
+          updateRouteListItemLoadingState(routeId, true);
+
+          try {
+            const resp = await fetch(routeFullUrl(routeId));
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            routeDataCache.set(routeId, data);
+            selectedBranchByRoute.set(routeId, 'ALL');
+            renderBranchChips(routeId);
+            renderRouteFromCache(routeId);
+          } catch (err) {
+            showError(`Failed to load route ${routeId}: ${err.message}`);
+            visibleRouteIds.delete(routeId);
+            updateRouteListItemVisualState(routeId);
+          } finally {
+            loadingRouteIds.delete(routeId);
+            updateRouteListItemLoadingState(routeId, false);
+          }
+        }
+
+        function updateStats() {
+          let cnt = 0,
+            stops = 0;
+          for (const routeId of visibleRouteIds) {
+            const fullData = routeDataCache.get(routeId);
+            if (!fullData) continue;
+            cnt++;
+            const branch = selectedBranchByRoute.get(routeId) ?? 'ALL';
+            (fullData.itineraries || []).forEach((it) => {
+              const dirOk =
+                activeDirection === 'both' || activeDirection === String(it.direction_id);
+              const branchOk = branch === 'ALL' || (it.branch_code || '') === branch;
+              if (dirOk && branchOk) stops += (it.stops && it.stops.length) || 0;
+            });
+          }
+          statsEl.textContent = `${cnt} route${cnt !== 1 ? 's' : ''} visible · ${stops} stop${stops !== 1 ? 's' : ''}`;
+        }
+
+        function getBranchOptions(fullData) {
+          const codes = new Set();
+          (fullData.itineraries || []).forEach((it) => codes.add(it.branch_code || ''));
+          return Array.from(codes).sort();
+        }
+
+        function renderBranchChips(routeId) {
+          const container = document.querySelector(
+            `.branch-chips[data-route-id="${CSS.escape(routeId)}"]`,
+          );
+          if (!container) return;
+          const fullData = routeDataCache.get(routeId);
+          if (!fullData) {
+            container.innerHTML = '';
+            return;
+          }
+          const options = getBranchOptions(fullData);
+          if (options.length <= 1) {
+            container.innerHTML = '';
+            return;
+          }
+          const selected = selectedBranchByRoute.get(routeId) ?? 'ALL';
+          const chipHtml = ['ALL', ...options]
+            .map((code) => {
+              const label = code === 'ALL' ? 'All' : code === '' ? 'Main' : code;
+              const active = selected === code;
+              return `<button type="button" class="branch-chip${active ? ' active' : ''}" data-branch="${code}">${label}</button>`;
+            })
+            .join('');
+          container.innerHTML = chipHtml;
+          container.querySelectorAll('.branch-chip').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              selectedBranchByRoute.set(routeId, btn.dataset.branch);
+              renderBranchChips(routeId);
+              renderRouteFromCache(routeId);
+            });
+          });
+        }
+
+        function updateRouteListItemVisualState(routeId) {
+          const li = routeListEl.querySelector(`li[data-route-id="${CSS.escape(routeId)}"]`);
+          if (!li) return;
+          if (visibleRouteIds.has(routeId)) li.classList.remove('dimmed');
+          else li.classList.add('dimmed');
+        }
+
+        function updateRouteListItemLoadingState(routeId, isLoading) {
+          const li = routeListEl.querySelector(`li[data-route-id="${CSS.escape(routeId)}"]`);
+          if (!li) return;
+          const badge = li.querySelector('.route-badge');
+          if (badge) badge.textContent = isLoading ? 'loading…' : li.dataset.modeName || '';
+        }
+
+        function buildRouteList() {
+          routeListEl.innerHTML = '';
+          const sorted = [...routesList].sort((a, b) =>
+            a.route_type === 1 ? -1 : b.route_type === 1 ? 1 : a.route_type - b.route_type,
+          );
+          sorted.forEach((route) => {
+            const rid = String(route.global_route_id);
+            const colorHex = route.color ? `#${route.color}` : '#888';
+            const textHex = route.text_color ? `#${route.text_color}` : getContrastColor(colorHex);
+            const label = route.short_name || route.long_name || rid;
+
+            const wrapper = document.createElement('div');
+
+            const li = document.createElement('li');
+            li.dataset.routeId = rid;
+            li.dataset.modeName = route.mode_name || '';
+            li.classList.add('dimmed');
+            li.innerHTML = `
+                <span class="route-swatch" style="background:${colorHex};color:${textHex};">
+                    ${(route.short_name || route.long_name || '?').charAt(0).toUpperCase()}
+                </span>
+                <span class="route-name">${label}</span>
+                <span class="route-badge">${route.mode_name || ''}</span>`;
+
+            li.addEventListener('click', () => {
+              if (visibleRouteIds.has(rid)) {
+                visibleRouteIds.delete(rid);
+                removeAllLayersForRoute(rid);
+                updateStats();
+                updateDynamicLabels();
+                updateStopVisibility();
+                updateRouteListItemVisualState(rid);
+              } else {
+                visibleRouteIds.add(rid);
+                updateRouteListItemVisualState(rid);
+                fetchAndRenderRoute(rid);
+              }
+            });
+
+            const chipRow = document.createElement('div');
+            chipRow.className = 'branch-chips';
+            chipRow.dataset.routeId = rid;
+
+            wrapper.appendChild(li);
+            wrapper.appendChild(chipRow);
+            routeListEl.appendChild(wrapper);
+          });
+        }
+
+        function setActiveDirection(dir) {
+          activeDirection = dir;
+          [btnBoth, btnOutbound, btnInbound].forEach((b) => b.classList.remove('active'));
+          if (dir === 'both') btnBoth.classList.add('active');
+          else if (dir === '0') btnOutbound.classList.add('active');
+          else if (dir === '1') btnInbound.classList.add('active');
+          for (const routeId of visibleRouteIds) {
+            if (routeDataCache.has(routeId)) renderRouteFromCache(routeId);
+          }
+        }
+
+        async function toggleAllRoutes() {
+          if (visibleRouteIds.size === routesList.length) {
+            for (const routeId of Array.from(visibleRouteIds)) {
+              visibleRouteIds.delete(routeId);
+              removeAllLayersForRoute(routeId);
+              updateRouteListItemVisualState(routeId);
+            }
+            updateStats();
+            updateDynamicLabels();
+            updateStopVisibility();
+          } else {
+            const toFetch = routesList
+              .map((r) => String(r.global_route_id))
+              .filter((id) => !visibleRouteIds.has(id));
+            toFetch.forEach((id) => visibleRouteIds.add(id));
+            await Promise.all(toFetch.map((id) => fetchAndRenderRoute(id)));
+            toFetch.forEach((id) => updateRouteListItemVisualState(id));
+          }
+        }
+
+        // ----- Event binding -----
+        btnBoth.addEventListener('click', () => setActiveDirection('both'));
+        btnOutbound.addEventListener('click', () => setActiveDirection('0'));
+        btnInbound.addEventListener('click', () => setActiveDirection('1'));
+        toggleAllBtn.addEventListener('click', toggleAllRoutes);
+
+        map.on('moveend', () => {
+          updateDynamicLabels();
+          updateStopVisibility();
+        });
+        map.on('zoomend', () => {
+          updateDynamicLabels();
+          updateStopVisibility();
+        });
+
+        // ----- Load initial route list -----
+        async function loadRouteList() {
+          loadingOverlay.classList.remove('hidden');
+          errorBanner.style.display = 'none';
+          try {
+            const resp = await fetch(ROUTES_URL);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (!Array.isArray(data)) throw new Error('Unexpected format');
+            routesList = data;
+
+            visibleRouteIds.clear();
+            routeDataCache.clear();
+            selectedBranchByRoute.clear();
+            layerRegistry.forEach((_, key) => removeItineraryLayer(key));
+            dynamicMarkerMap.forEach((m) => map.removeLayer(m));
+            dynamicMarkerMap.clear();
+
+            buildRouteList();
+            updateStats();
+            loadingOverlay.classList.add('hidden');
+            console.log(`✅ Loaded ${data.length} route names (click to load shape).`);
+          } catch (err) {
+            loadingOverlay.classList.add('hidden');
+            showError(err.message);
+            console.error(err);
+            routesList = [];
+            buildRouteList();
+            updateStats();
+          }
+        }
+
+        // Extra tooltip/popup styles
+        const style = document.createElement('style');
+        style.textContent = `
+        .polyline-tooltip {
+            font-family:'Segoe UI',system-ui,sans-serif; font-size:0.8rem; font-weight:600;
+            background:rgba(30,30,46,0.92); color:#fff; border:none;
+            border-radius:6px; padding:4px 10px; box-shadow:0 2px 8px rgba(0,0,0,0.4);
+        }
+        .leaflet-tooltip { font-family:'Segoe UI',system-ui,sans-serif; font-size:0.78rem; }
+        .leaflet-popup-content { font-family:'Segoe UI',system-ui,sans-serif; font-size:0.82rem; line-height:1.4; }
+    `;
+        document.head.appendChild(style);
+        loadRouteList();
+      })();
+    </script>
+  </body>
+</html>
