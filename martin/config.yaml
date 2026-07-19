@@ -1,0 +1,17 @@
+postgres:
+  connection_string: 'postgres://transit:transit_pw@postgres:5432/transit_bunching'
+
+  functions:
+    roads_mvt:
+      schema: public
+      function: roads_mvt
+      minzoom: 0
+      maxzoom: 20
+      bounds: [-79.639257, 43.580896, -79.115243, 43.855454]
+
+    buildings_mvt: # ← this must be added
+      schema: public
+      function: buildings_mvt
+      minzoom: 12
+      maxzoom: 20
+      bounds: [-79.639257, 43.580896, -79.115243, 43.855454]

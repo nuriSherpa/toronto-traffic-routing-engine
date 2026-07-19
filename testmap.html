@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Toronto Roads + Buildings Debug</title>
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: sans-serif;
+      }
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+      }
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 1;
+        background: rgba(0, 0, 0, 0.85);
+        color: #eee;
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      .ok {
+        color: #7ee787;
+      }
+      .err {
+        color: #ff7b72;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">
+      <div><span id="status">Loading…</span></div>
+      <div>Red buildings should appear at zoom 13+.</div>
+    </div>
+    <div id="map"></div>
+    <script>
+      const TILE_BASE = 'http://localhost:3002';
+
+      const map = new maplibregl.Map({
+        container: 'map',
+        style: {
+          version: 8,
+          glyphs: 'https://fonts.undpgeohub.org/fonts/{fontstack}/{range}.pbf',
+          sources: {},
+          layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#1d2126' } }],
+        },
+        center: [-79.38, 43.71],
+        zoom: 13,
+      });
+      map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+      map.on('load', async () => {
+        const statusEl = document.getElementById('status');
+        try {
+          // Roads (optional, just for context)
+          const roadsRes = await fetch(`${TILE_BASE}/roads_mvt`);
+          const roadsJson = await roadsRes.json();
+          map.addSource('roads', {
+            type: 'vector',
+            tiles: roadsJson.tiles,
+            minzoom: 0,
+            maxzoom: 20,
+          });
+          map.addLayer({
+            id: 'roads-line',
+            type: 'line',
+            source: 'roads',
+            'source-layer': 'roads',
+            paint: { 'line-color': '#aaa', 'line-width': 2 },
+          });
+
+          // Buildings
+          const bldgRes = await fetch(`${TILE_BASE}/buildings_mvt`);
+          if (!bldgRes.ok) throw new Error('TileJSON failed');
+          const bldgJson = await bldgRes.json();
+          console.log('Buildings TileJSON:', bldgJson);
+
+          map.addSource('buildings', {
+            type: 'vector',
+            tiles: bldgJson.tiles,
+            minzoom: 12,
+            maxzoom: 20,
+          });
+
+          // Use 'default' as source-layer (Martin often uses 'default' for function sources)
+          const LAYER_NAME = 'default';
+
+          map.addLayer({
+            id: 'buildings-3d',
+            type: 'fill-extrusion',
+            source: 'buildings',
+            'source-layer': LAYER_NAME,
+            minzoom: 13,
+            paint: {
+              'fill-extrusion-color': '#ff0000',
+              'fill-extrusion-height': [
+                'coalesce',
+                ['get', 'height'],
+                ['*', ['get', 'levels'], 3],
+                10,
+              ],
+              'fill-extrusion-opacity': 1,
+            },
+          });
+
+          // Log building feature count
+          map.on('sourcedata', (e) => {
+            if (e.sourceId === 'buildings' && e.isSourceLoaded) {
+              const feats = map.querySourceFeatures('buildings', { sourceLayer: LAYER_NAME });
+              console.log(`Building features in view: ${feats.length}`);
+              statusEl.innerHTML = `Building features: ${feats.length}`;
+              statusEl.className = 'ok';
+            }
+          });
+
+          // Fly to downtown Toronto at zoom 14 to ensure tile loading
+          setTimeout(() => {
+            map.flyTo({ center: [-79.38, 43.65], zoom: 14 });
+          }, 1500);
+        } catch (err) {
+          statusEl.textContent = '✗ ' + err.message;
+          statusEl.className = 'err';
+          console.error(err);
+        }
+      });
+    </script>
+  </body>
+</html>

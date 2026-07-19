@@ -1,4 +1,4 @@
-version: "3.9"
+version: '3.9'
 
 services:
   postgres:
@@ -11,12 +11,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-transit_pw}
       POSTGRES_DB: ${POSTGRES_DB:-transit_bunching}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./server/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-transit} -d ${POSTGRES_DB:-transit_bunching}"]
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-transit} -d ${POSTGRES_DB:-transit_bunching}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -26,11 +27,11 @@ services:
     container_name: transit_redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -41,7 +42,7 @@ services:
     container_name: transit_server
     restart: unless-stopped
     ports:
-      - "${SERVER_PORT:-3000}:3000"
+      - '${SERVER_PORT:-3000}:3000'
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -56,6 +57,40 @@ services:
     volumes:
       - ./server/src:/app/src
     command: npm run dev
+
+  tile-server:
+    build:
+      context: ./tile-server
+    container_name: transit_tile_server
+    restart: unless-stopped
+    ports:
+      - '${TILE_SERVER_PORT:-3001}:3001'
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-transit}:${POSTGRES_PASSWORD:-transit_pw}@postgres:5432/${POSTGRES_DB:-transit_bunching}
+      REDIS_URL: redis://redis:6379
+      PORT: 3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./tile-server/src:/app/src
+
+  martin:
+    image: ghcr.io/maplibre/martin:latest
+    container_name: transit_martin
+    restart: unless-stopped
+    ports:
+      - '${MARTIN_PORT:-3002}:3000'
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-transit}:${POSTGRES_PASSWORD:-transit_pw}@postgres:5432/${POSTGRES_DB:-transit_bunching}
+    volumes:
+      - ./martin/config.yaml:/config.yaml:ro
+    command: ['--config', '/config.yaml']
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
